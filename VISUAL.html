@@ -348,7 +348,6 @@
     <script src="./libs/potree/potree.js"></script>
     <script src="./libs/plasio/js/laslaz.js"></script>
 
-    <!-- NEW: Loading screen element -->
     <div id="loading_screen">
         <i class="fas fa-spinner spinner"></i>
     </div>
@@ -382,12 +381,12 @@
         // Configuración centralizada
         const config = {
             api: {
-                position: "https://obaqpebzbf.execute-api.us-east-1.amazonaws.com/default/GetLatestDevicePosition",
-                deviceIds: "https://2nwym4pswl.execute-api.us-east-1.amazonaws.com/default/ListDeviceIds",
+                position: "https://gdrw3khhwa.execute-api.us-east-1.amazonaws.com/default/GRANMUGNOLOCATION",
+                deviceIds: "https://ry6ehxwn0j.execute-api.us-east-1.amazonaws.com/default/DEVICEMUG",
             },
             maxDevices: 8,
             updateInterval: 10000, // 10 segundos
-            altitudeOffset: 36,
+            altitudeOffset: 34.5,
             maxTrajectoryPoints: 100,
             sphereTransitionDuration: 1000,
             spherePulseDuration: 500
@@ -767,12 +766,36 @@
             geometry.index.needsUpdate = true;
         }
 
+        // Función locateDevice corregida
         function locateDevice(deviceId) {
             const device = devicesData[deviceId];
             if (device && device.lastPosition) {
-                viewer.scene.view.position.copy(device.lastPosition);
-                viewer.scene.view.position.z += 50;
-                viewer.scene.view.lookAt(device.lastPosition);
+                const targetPosition = device.lastPosition;
+
+                // Define un desplazamiento para la cámara desde el dispositivo objetivo.
+                // Esto se puede ajustar según la distancia de visualización deseada.
+                // Por ejemplo, 100 unidades por encima y ligeramente hacia atrás del dispositivo.
+                const cameraOffset = new THREE.Vector3(0, -50, 100); // x, y, z offset desde el dispositivo
+
+                // Obtiene la posición actual de la cámara y el objetivo (hacia donde está mirando).
+                const currentCameraPosition = viewer.scene.view.position.clone();
+
+                // Calcula la nueva posición de la cámara sumando el offset a la posición del dispositivo.
+                const newCameraPosition = new THREE.Vector3().addVectors(targetPosition, cameraOffset);
+
+                // Usa una animación TWEEN para una transición suave de la cámara a la nueva posición y objetivo.
+                // Esto evita un salto abrupto y mejora la experiencia de usuario,
+                // especialmente al moverse a puntos distantes.
+                new TWEEN.Tween(currentCameraPosition)
+                    .to(newCameraPosition, 1000) // Animar durante 1000 milisegundos (1 segundo)
+                    .easing(TWEEN.Easing.Quadratic.InOut)
+                    .onUpdate(() => {
+                        viewer.scene.view.position.copy(currentCameraPosition);
+                        viewer.scene.view.lookAt(targetPosition); // Siempre mirar al dispositivo
+                    })
+                    .start();
+
+                viewer.scene.scene.needsUpdate = true; // Asegurar que la escena se actualice después del movimiento de la cámara
             }
         }
 
