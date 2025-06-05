@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="description" content="">
+    <meta name="description" content="3D Point Cloud Visualization with Device Monitoring">
     <meta name="author" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Potree Viewer</title>
@@ -29,7 +29,7 @@
         body {
             margin: 0;
             overflow: hidden;
-            background: linear-gradient( Kraftfahrzeuge, #1a1a2e 0%, #16213e 100%);
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
             color: var(--text-light);
             font-family: 'Inter', Arial, sans-serif;
         }
@@ -266,8 +266,7 @@
             background: rgba(30, 30, 30, 0.95);
             border-right: 1px solid rgba(255, 255, 255, 0.1);
             color: var(--text-light);
-            /* Ocultar la barra lateral por defecto */
-            display: none; 
+            display: none;
         }
         #potree_sidebar_container .ui-widget-content {
             background: transparent;
@@ -289,6 +288,31 @@
             background: #45b7d1;
         }
 
+        /* NEW: Loading screen styles */
+        #loading_screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-darker);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            opacity: 1;
+            transition: opacity 0.3s ease-out;
+        }
+        #loading_screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #loading_screen .spinner {
+            font-size: 2.5em;
+            color: var(--primary);
+            animation: spin 1s linear infinite;
+        }
+
         @media (max-width: 768px) {
             #all_devices_info_container {
                 width: 100%;
@@ -302,6 +326,10 @@
             }
             .device_info_block {
                 padding: 10px;
+            }
+            /* NEW: Adjust spinner size for mobile */
+            #loading_screen .spinner {
+                font-size: 2em;
             }
         }
     </style>
@@ -320,6 +348,11 @@
     <script src="./libs/potree/potree.js"></script>
     <script src="./libs/plasio/js/laslaz.js"></script>
 
+    <!-- NEW: Loading screen element -->
+    <div id="loading_screen">
+        <i class="fas fa-spinner spinner"></i>
+    </div>
+
     <div class="potree_container">
         <div id="potree_render_area"></div>
         <div id="potree_sidebar_container"></div>
@@ -337,17 +370,27 @@
     </div>
 
     <script>
+        // NEW: Hide loading screen after 1 second
+        window.onload = () => {
+            const loadingScreen = document.getElementById('loading_screen');
+            setTimeout(() => {
+                loadingScreen.classList.add('hidden');
+                setTimeout(() => loadingScreen.remove(), 300);
+            }, 1500);
+        };
+
         // Configuración centralizada
         const config = {
             api: {
-                position: "https://gdrw3khhwa.execute-api.us-east-1.amazonaws.com/default/GRANMUGNOLOCATION",
-                deviceIds: "https://er62e71gv3.execute-api.us-east-1.amazonaws.com/default/DEVICEMUGNO",
-               
+                position: "https://obaqpebzbf.execute-api.us-east-1.amazonaws.com/default/GetLatestDevicePosition",
+                deviceIds: "https://2nwym4pswl.execute-api.us-east-1.amazonaws.com/default/ListDeviceIds",
             },
             maxDevices: 8,
             updateInterval: 10000, // 10 segundos
-            altitudeOffset: 34.4,
-            maxTrajectoryPoints: 100 // Limit trajectory points to avoid performance issues
+            altitudeOffset: 36,
+            maxTrajectoryPoints: 100,
+            sphereTransitionDuration: 1000,
+            spherePulseDuration: 500
         };
 
         // Definir proyecciones
@@ -365,10 +408,24 @@
 
         const devicesData = {};
         const deviceColors = [
-            0x0000ff, 0x00ff00, 0xffa500, 0x800080,
-            0xffc0cb, 0x00ffff, 0xff00ff, 0xffff00
+            0xFF0000, // Rojo Brillante
+            0x00FF00, // Verde Lima
+            0x0000FF, // Azul Eléctrico
+            0xFFFF00, // Amarillo Brillante
+            0xFF00FF, // Magenta (Fucsia)
+            0x00FFFF, // Cian (Aguamarina)
+            0xFF4500, // Naranja Rojo
+            0x8A2BE2  // Azul Violeta Eléctrico
         ];
-        let sphereGeometry;
+        let sphereGeometry, glowGeometry;
+
+        // Custom render loop for TWEEN animations
+        function animate() {
+            requestAnimationFrame(animate);
+            TWEEN.update();
+            viewer.renderer.render(viewer.scene.scene, viewer.scene.camera);
+        }
+        animate();
 
         // Funciones de inicialización
         function initializeScene(pointcloud) {
@@ -384,12 +441,66 @@
             }
             scene.addPointCloud(pointcloud);
 
-            sphereGeometry = new THREE.SphereGeometry(1.5, 16, 16);
+            sphereGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+            glowGeometry = new THREE.SphereGeometry(2.0, 32, 32);
+        }
 
+        // Function to create a device sphere with glow effect
+        function createDeviceSphere(color) {
+            const group = new THREE.Group();
+
+            // Main sphere
+            const sphereMaterial = new THREE.MeshStandardMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.2,
+                metalness: 0.3,
+                roughness: 0.7
+            });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            group.add(sphere);
+
+            // Glow sphere
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.3,
+                depthWrite: false
+            });
+            const glowSphere = new THREE.Mesh(glowGeometry, glowMaterial);
+            group.add(glowSphere);
+
+            return { group, sphere, glowSphere };
+        }
+
+        // Function to animate sphere pulse
+        function pulseSphere(sphere) {
+            const initialScale = { x: 1, y: 1, z: 1 };
+            const targetScale = { x: 1.2, y: 1.2, z: 1.2 };
+            new TWEEN.Tween(initialScale)
+                .to(targetScale, config.spherePulseDuration / 2)
+                .easing(TWEEN.Easing.Quadratic.Out)
+                .onUpdate(() => {
+                    sphere.scale.set(initialScale.x, initialScale.y, initialScale.z);
+                })
+                .chain(
+                    new TWEEN.Tween(initialScale)
+                        .to({ x: 1, y: 1, z: 1 }, config.spherePulseDuration / 2)
+                        .easing(TWEEN.Easing.Quadratic.In)
+                        .onUpdate(() => {
+                            sphere.scale.set(initialScale.x, initialScale.y, initialScale.z);
+                        })
+                )
+                .start();
         }
 
         // Funciones de gestión de dispositivos
-        async function setupDeviceMonitoring() {
+        async function setupDeviceMonitoring(attempt = 1, maxAttempts = 3) {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.color = 'var(--error)';
+            errorDiv.style.padding = '15px';
+            errorDiv.style.textAlign = 'center';
+
             try {
                 const response = await fetch(config.api.deviceIds);
                 if (!response.ok) {
@@ -403,15 +514,13 @@
 
                 finalDeviceIds.forEach((deviceId, index) => {
                     const color = deviceColors[index % deviceColors.length];
-                    const deviceSphereMaterial = new THREE.MeshBasicMaterial({ color: color });
-                    const deviceSphere = new THREE.Mesh(sphereGeometry, deviceSphereMaterial);
-                    viewer.scene.scene.add(deviceSphere);
+                    const { group: deviceSphereGroup, sphere: deviceSphere } = createDeviceSphere(color);
+                    viewer.scene.scene.add(deviceSphereGroup);
 
-                    // CHANGED: Use indexed LineSegments for thicker lines
                     const trajectoryGeometry = new THREE.BufferGeometry();
                     const maxSegments = config.maxTrajectoryPoints - 1;
-                    const positionsArray = new Float32Array(maxSegments * 6 * 3); // 6 vertices per segment
-                    const indicesArray = new Uint32Array(maxSegments * 6); // Indices for two triangles
+                    const positionsArray = new Float32Array(maxSegments * 6 * 3);
+                    const indicesArray = new Uint32Array(maxSegments * 6);
                     trajectoryGeometry.setAttribute('position', new THREE.BufferAttribute(positionsArray, 3));
                     trajectoryGeometry.setIndex(new THREE.BufferAttribute(indicesArray, 1));
                     const trajectoryMaterial = new THREE.LineBasicMaterial({ color: color });
@@ -419,7 +528,6 @@
                     trajectoryLine.visible = false;
                     viewer.scene.scene.add(trajectoryLine);
 
-                    // CHANGED: Add debug spheres group
                     const debugSpheresGroup = new THREE.Group();
                     viewer.scene.scene.add(debugSpheresGroup);
 
@@ -484,34 +592,41 @@
 
                     devicesData[deviceId] = {
                         sphere: deviceSphere,
-                        speedDisplay: speedDisplay,
-                        heartRateDisplay: heartRateDisplay,
+                        sphereGroup: deviceSphereGroup,
+                        speedDisplay,
+                        heartRateDisplay,
                         trajectory: {
                             line: trajectoryLine,
                             isVisible: false,
                             button: trajectoryButton,
                             points: [],
                             pointCount: 0,
-                            debugSpheresGroup: debugSpheresGroup
+                            debugSpheresGroup
                         },
                         lastPosition: null,
-                        locateButton: locateButton
+                        targetPosition: null,
+                        locateButton
                     };
                 });
                 fetchAllDevicePositions();
                 setInterval(fetchAllDevicePositions, config.updateInterval);
             } catch (error) {
                 console.error('Error al configurar el monitoreo de dispositivos:', error);
-                const errorDiv = document.createElement('div');
-                errorDiv.style.color = 'var(--error)';
-                errorDiv.style.padding = '15px';
-                errorDiv.innerHTML = ` Error al cargar dispositivos: ${error.message} <button class="action_button retry_button">Reintentar</button> `;
-                document.getElementById('all_devices_info_container').appendChild(errorDiv);
-                errorDiv.querySelector('.retry_button').onclick = setupDeviceMonitoring;
+                if (attempt < maxAttempts) {
+                    errorDiv.innerHTML = `Reintentando cargar dispositivos (${attempt}/${maxAttempts})...`;
+                    document.getElementById('all_devices_info_container').appendChild(errorDiv);
+                    setTimeout(() => setupDeviceMonitoring(attempt + 1, maxAttempts), Math.pow(2, attempt) * 1000);
+                } else {
+                    errorDiv.innerHTML = `Error al cargar dispositivos: ${error.message}. <button class="action_button retry_button">Reintentar</button>`;
+                    document.getElementById('all_devices_info_container').appendChild(errorDiv);
+                    errorDiv.querySelector('.retry_button').onclick = () => {
+                        errorDiv.remove();
+                        setupDeviceMonitoring();
+                    };
+                }
             }
         }
 
-        /** @param {string} deviceId */
         async function fetchAndUpdateDevicePosition(deviceId) {
             const device = devicesData[deviceId];
             if (!device) return;
@@ -534,35 +649,45 @@
                     const [x, y] = proj4("EPSG:4326", "EPSG:32618", [lon, lat]);
 
                     const newPosition = new THREE.Vector3(x, y, alt);
-                    device.sphere.position.copy(newPosition);
+                    device.targetPosition = newPosition;
                     device.lastPosition = newPosition;
                     device.locateButton.disabled = false;
 
-                    // Update trajectory
+                    new TWEEN.Tween(device.sphereGroup.position)
+                        .to({ x: newPosition.x, y: newPosition.y, z: newPosition.z }, config.sphereTransitionDuration)
+                        .easing(TWEEN.Easing.Quadratic.InOut)
+                        .onUpdate(() => {
+                            viewer.scene.scene.needsUpdate = true;
+                        })
+                        .start();
+
+                    pulseSphere(device.sphere);
+
                     const trajectory = device.trajectory;
                     trajectory.points.push(newPosition);
                     trajectory.pointCount++;
 
                     if (trajectory.points.length > config.maxTrajectoryPoints) {
-                        trajectory.points.shift(); // Remove the oldest point
+                        trajectory.points.shift();
                         if (trajectory.debugSpheresGroup.children.length > 0) {
                             trajectory.debugSpheresGroup.remove(trajectory.debugSpheresGroup.children[0]);
                         }
                     }
 
-                    // Update debug spheres for trajectory
-                    const debugSphereMaterial = new THREE.MeshBasicMaterial({ color: device.sphere.material.color, transparent: true, opacity: 0.5 });
+                    const debugSphereMaterial = new THREE.MeshBasicMaterial({
+                        color: device.sphere.material.color,
+                        transparent: true,
+                        opacity: 0.4
+                    });
                     const debugSphere = new THREE.Mesh(sphereGeometry, debugSphereMaterial);
                     debugSphere.position.copy(newPosition);
+                    debugSphere.scale.set(0.5, 0.5, 0.5);
                     trajectory.debugSpheresGroup.add(debugSphere);
-                    debugSphere.scale.set(0.5, 0.5, 0.5); // Make debug spheres smaller
 
-                    // Update line segments (thicker lines)
                     updateLineSegments(trajectory.line, trajectory.points);
                     trajectory.line.visible = trajectory.isVisible && trajectory.points.length >= 2;
                     trajectory.debugSpheresGroup.visible = trajectory.isVisible;
 
-                    // Update UI
                     const speed = data.SPEED_MS != null ? parseFloat(data.SPEED_MS).toFixed(2) : 'N/A';
                     const heartRate = data.HEART_RATE != null ? parseInt(data.HEART_RATE) : 'N/A';
 
@@ -598,15 +723,11 @@
             }
         }
 
-        /**
-         * @param {THREE.LineSegments} lineObject
-         * @param {THREE.Vector3[]} points
-         */
         function updateLineSegments(lineObject, points) {
             const geometry = lineObject.geometry;
             const positions = geometry.attributes.position.array;
             const indices = geometry.index.array;
-            const thickness = 0.5; // Ajusta este valor para controlar el grosor de la línea
+            const thickness = 0.7;
 
             let posIndex = 0;
             let idxIndex = 0;
@@ -615,26 +736,22 @@
                 const start = points[i];
                 const end = points[i + 1];
 
-                // Calculate perpendicular vector for thickness
                 const direction = new THREE.Vector3().subVectors(end, start).normalize();
                 let perpendicular = new THREE.Vector3(-direction.y, direction.x, 0).normalize();
-                if (perpendicular.lengthSq() === 0) { // Handle vertical lines
+                if (perpendicular.lengthSq() === 0) {
                     perpendicular.set(1, 0, 0);
                 }
 
-                // Four vertices for the segment (forming a quad)
                 const v1 = new THREE.Vector3().addVectors(start, perpendicular.clone().multiplyScalar(thickness / 2));
                 const v2 = new THREE.Vector3().subVectors(start, perpendicular.clone().multiplyScalar(thickness / 2));
                 const v3 = new THREE.Vector3().addVectors(end, perpendicular.clone().multiplyScalar(thickness / 2));
                 const v4 = new THREE.Vector3().subVectors(end, perpendicular.clone().multiplyScalar(thickness / 2));
 
-                // Store positions
                 positions[posIndex++] = v1.x; positions[posIndex++] = v1.y; positions[posIndex++] = v1.z;
                 positions[posIndex++] = v2.x; positions[posIndex++] = v2.y; positions[posIndex++] = v2.z;
                 positions[posIndex++] = v3.x; positions[posIndex++] = v3.y; positions[posIndex++] = v3.z;
                 positions[posIndex++] = v4.x; positions[posIndex++] = v4.y; positions[posIndex++] = v4.z;
 
-                // Store indices for two triangles (forming the quad)
                 const baseIndex = i * 4;
                 indices[idxIndex++] = baseIndex;
                 indices[idxIndex++] = baseIndex + 1;
@@ -645,20 +762,17 @@
                 indices[idxIndex++] = baseIndex + 2;
             }
 
-            // Set the draw range to only render the used part of the buffer
             geometry.setDrawRange(0, idxIndex);
             geometry.attributes.position.needsUpdate = true;
             geometry.index.needsUpdate = true;
         }
 
-
         function locateDevice(deviceId) {
             const device = devicesData[deviceId];
             if (device && device.lastPosition) {
                 viewer.scene.view.position.copy(device.lastPosition);
-                viewer.scene.view.position.z += 50; // Ajusta la altitud para una mejor vista
+                viewer.scene.view.position.z += 50;
                 viewer.scene.view.lookAt(device.lastPosition);
-                viewer.set  ;
             }
         }
 
@@ -675,13 +789,13 @@
             if (!trajectory.isVisible) {
                 line.visible = false;
                 debugSpheresGroup.visible = false;
-                button.innerHTML = `<i class=\"fas fa-route\"></i> Trayectoria`;
+                button.innerHTML = `<i class="fas fa-route"></i> Trayectoria`;
                 button.classList.remove('active');
             } else {
                 trajectory.isVisible = true;
                 line.visible = trajectory.points.length >= 2;
                 debugSpheresGroup.visible = true;
-                button.innerHTML = `<i class=\"fas fa-route\"></i> Ocultar`;
+                button.innerHTML = `<i class="fas fa-route"></i> Ocultar`;
                 button.classList.add('active');
             }
             console.log(`Toggled trajectory for ${deviceId}, visible: ${line.visible}`);
@@ -696,8 +810,8 @@
         function togglePanel() {
             const isVisible = devicesPanel.classList.toggle('visible');
             togglePanelButton.innerHTML = isVisible
-                ? `<i class=\"fas fa-times\"></i> Cerrar`
-                : `<i class=\"fas fa-tachometer-alt\"></i> Panel`;
+                ? `<i class="fas fa-times"></i> Cerrar`
+                : `<i class="fas fa-tachometer-alt"></i> Panel`;
         }
 
         togglePanelButton.addEventListener('click', togglePanel);
@@ -705,9 +819,33 @@
 
         // Cargar la nube de puntos
         Potree.loadPointCloud("./pointclouds/MALECONTRUE/cloud.js", "MALECON", async e => {
+            if (!e.pointcloud) {
+                console.error('Error: No se pudo cargar la nube de puntos');
+                const errorDiv = document.createElement('div');
+                errorDiv.style.color = 'var(--error)';
+                errorDiv.style.padding = '15px';
+                errorDiv.style.position = 'absolute';
+                errorDiv.style.top = '50%';
+                errorDiv.style.left = '50%';
+                errorDiv.style.transform = 'translate(-50%, -50%)';
+                errorDiv.innerHTML = 'Error al cargar la nube de puntos. Verifique el archivo cloud.js.';
+                document.body.appendChild(errorDiv);
+                return;
+            }
             initializeScene(e.pointcloud);
             setupDeviceMonitoring();
             viewer.fitToScreen();
+        }).catch(error => {
+            console.error('Error al cargar la nube de puntos:', error);
+            const errorDiv = document.createElement('div');
+            errorDiv.style.color = 'var(--error)';
+            errorDiv.style.padding = '15px';
+            errorDiv.style.position = 'absolute';
+            errorDiv.style.top = '50%';
+            errorDiv.style.left = '50%';
+            errorDiv.style.transform = 'translate(-50%, -50%)';
+            errorDiv.innerHTML = `Error al cargar la nube de puntos: ${error.message}`;
+            document.body.appendChild(errorDiv);
         });
     </script>
 </body>
