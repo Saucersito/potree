@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="description" content="Potree Viewer with Introduction">
+    <meta name="author" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Potree Viewer with Introduction</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #4ecdc4;
+            --secondary: #feca57;
+            --bg-dark: #2a2a3a;
+            --bg-darker: #1f1f2f;
+            --text-light: #e0e0e0;
+            --error: #ff6b6b;
+        }
+
+        body {
+            margin: 0;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: var(--text-light);
+            font-family: 'Inter', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .introduction {
+            padding: 30px 40px;
+            text-align: center;
+            background: var(--bg-dark);
+            border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+            flex-shrink: 0;
+        }
+
+        .introduction h1 {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            color: #ffffff;
+        }
+
+        .introduction p {
+            font-size: 1.2em;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .viewer-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            min-height: 0;
+        }
+
+        .iframe-wrapper {
+            width: 95%;
+            height: calc(100vh - 280px);
+            min-height: 700px;
+            max-width: none;
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .iframe-wrapper iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .fullscreen-button {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: linear-gradient(45deg, var(--primary), #45b7d1);
+            color: #fff;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            z-index: 1001;
+        }
+
+        .fullscreen-button:hover {
+            background: linear-gradient(45deg, #45b7d1, var(--primary));
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(78, 205, 196, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .iframe-wrapper {
+                width: 98%;
+                height: calc(100vh - 320px);
+                min-height: 500px;
+            }
+
+            .introduction {
+                padding: 20px;
+            }
+
+            .introduction h1 {
+                font-size: 1.8em;
+            }
+
+            .introduction p {
+                font-size: 1em;
+            }
+        }
+
+        @media (max-height: 600px) {
+            .iframe-wrapper {
+                min-height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Introduction Section -->
+    <div class="introduction">
+        <h1>Bienvenido a la nube de puntos del malecón del río</h1>
+        <p>
+            Esta aplicación permite visualizar nubes de puntos 3D y datos de dispositivos en tiempo real utilizando Potree.
+            Explora el entorno 3D interactivo a continuación, que muestra la nube de puntos del conjunto de datos del malecón del río.
+            Junto con las ubicaciones de los dispositivos, sus trayectorias y datos de sensores como velocidad y ritmo cardíaco.
+            Que estén conectados a nuestra base de datos conjunta, además de opciones interactivas. ¿Cómo ubicar el dispositivo que quieras ver?
+        </p>
+    </div>
+
+    <!-- Viewer Container with Iframe -->
+    <div class="viewer-container">
+        <div class="iframe-wrapper">
+            <iframe src="VISUAL.html" title="Potree Viewer"></iframe>
+            <button class="fullscreen-button" onclick="toggleFullscreen()">
+                <i class="fas fa-expand"></i> Pantalla Completa
+            </button>
+        </div>
+    </div>
+
+    <script>
+        function toggleFullscreen() {
+            const iframe = document.querySelector('iframe');
+            const button = document.querySelector('.fullscreen-button');
+            if (!document.fullscreenElement) {
+                iframe.requestFullscreen().then(() => {
+                    button.innerHTML = '<i class="fas fa-compress"></i> Salir de Pantalla Completa';
+                }).catch(err => {
+                    console.error('Error al entrar en pantalla completa:', err);
+                });
+            } else {
+                document.exitFullscreen().then(() => {
+                    button.innerHTML = '<i class="fas fa-expand"></i> Pantalla Completa';
+                });
+            }
+        }
+
+        // Manejar cambios en el estado de pantalla completa
+        document.addEventListener('fullscreenchange', () => {
+            const button = document.querySelector('.fullscreen-button');
+            if (document.fullscreenElement) {
+                button.innerHTML = '<i class="fas fa-compress"></i> Salir de Pantalla Completa';
+            } else {
+                button.innerHTML = '<i class="fas fa-expand"></i> Pantalla Completa';
+            }
+        });
+    </script>
+</body>
+</html>

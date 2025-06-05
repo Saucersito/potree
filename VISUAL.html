@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Potree Viewer</title>
+
+    <link rel="stylesheet" type="text/css" href="./libs/potree/potree.css">
+    <link rel="stylesheet" type="text/css" href="./libs/jquery-ui/jquery-ui.min.css">
+    <link rel="stylesheet" type="text/css" href="./libs/openlayers3/ol.css">
+    <link rel="stylesheet" type="text/css" href="./libs/spectrum/spectrum.css">
+    <link rel="stylesheet" type="text/css" href="./libs/jstree/themes/mixed/style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r110/three.min.js"></script>
+    <style>
+        :root {
+            --primary: #4ecdc4;
+            --secondary: #feca57;
+            --bg-dark: #2a2a3a;
+            --bg-darker: #1f1f2f;
+            --text-light: #e0e0e0;
+            --error: #ff6b6b;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient( Kraftfahrzeuge, #1a1a2e 0%, #16213e 100%);
+            color: var(--text-light);
+            font-family: 'Inter', Arial, sans-serif;
+        }
+
+        .potree_container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            left: 0;
+            top: 0;
+            background: #000;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #potree_render_area {
+            background: #000;
+        }
+
+        #all_devices_info_container {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 340px;
+            height: 100vh;
+            background: linear-gradient(180deg, var(--bg-dark), var(--bg-darker));
+            padding: 20px;
+            border-left: 2px solid rgba(255, 255, 255, 0.08);
+            z-index: 1000;
+            transform: translateX(100%);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-y: auto;
+            box-shadow: -8px 0 20px rgba(0, 0, 0, 0.6);
+        }
+
+        #all_devices_info_container.visible {
+            transform: translateX(0);
+        }
+
+        #devices_panel_header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        #devices_panel_title {
+            color: #ffffff;
+            font-size: 1.5em;
+            font-weight: 600;
+        }
+
+        #close_panel_button {
+            background: none;
+            border: none;
+            color: var(--error);
+            font-size: 1.3em;
+            cursor: pointer;
+            padding: 5px;
+            transition: color 0.2s;
+        }
+        #close_panel_button:hover {
+            color: #ff8787;
+        }
+
+        .device_info_block {
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
+            transition: background 0.2s, transform 0.2s;
+            cursor: pointer;
+        }
+        .device_info_block:hover {
+            background: rgba(255, 255, 255, 0.12);
+            transform: translateY(-3px);
+        }
+        .device_info_block.collapsed .device_content {
+            display: none;
+        }
+        .device_info_block.collapsed .toggle_collapse::before {
+            content: '\f107';
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+        .data-updated {
+            animation: pulse 0.3s;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .device_color_indicator {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .device_id_display {
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+            font-size: 1.2em;
+            color: #ffffff;
+            margin-bottom: 10px;
+        }
+
+        .toggle_collapse {
+            margin-left: auto;
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            color: #bbb;
+            cursor: pointer;
+        }
+        .toggle_collapse::before {
+            content: '\f106';
+        }
+
+        .device_content {
+            padding-left: 24px;
+        }
+
+        .speed_display, .heart_rate_display {
+            font-size: 0.95em;
+            color: var(--text-light);
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .speed_display i, .heart_rate_display i {
+            color: var(--primary);
+            font-size: 1.1em;
+        }
+
+        .loading::after {
+            content: '\f110';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            margin-left: 8px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .button_group {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            justify-content: flex-end;
+        }
+
+        .action_button {
+            background: linear-gradient(45deg, var(--primary), #45b7d1);
+            color: #fff;
+            padding: 8px 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: all 0.2s;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .action_button:hover {
+            background: linear-gradient(45deg, #45b7d1, var(--primary));
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(78, 205, 196, 0.3);
+        }
+        .action_button.active {
+            background: linear-gradient(45deg, var(--error), #ff8787);
+        }
+        .action_button:disabled {
+            background: #4a4a5a;
+            cursor: not-allowed;
+            opacity: 0.6;
+            transform: none;
+        }
+
+        .retry_button {
+            background: var(--error);
+            margin-top: 10px;
+            display: inline-block;
+        }
+        .retry_button:hover {
+            background: #ff8787;
+        }
+
+        #toggle_device_panel_button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(45deg, var(--primary), #45b7d1);
+            color: #fff;
+            padding: 12px 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Inter', Arial, sans-serif;
+            font-size: 1em;
+            font-weight: 500;
+            z-index: 1001;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #toggle_device_panel_button:hover {
+            background: linear-gradient(45deg, #45b7d1, var(--primary));
+            transform: translateY(-2px);
+        }
+        #toggle_device_panel_button i {
+            font-size: 1.2em;
+        }
+
+        #potree_sidebar_container {
+            background: rgba(30, 30, 30, 0.95);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-light);
+            /* Ocultar la barra lateral por defecto */
+            display: none; 
+        }
+        #potree_sidebar_container .ui-widget-content {
+            background: transparent;
+            color: var(--text-light);
+        }
+        #potree_sidebar_container .ui-widget-header {
+            background: var(--bg-dark);
+            color: #fff;
+            border: none;
+        }
+        #potree_sidebar_container button {
+            background: var(--primary);
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            padding: 8px;
+        }
+        #potree_sidebar_container button:hover {
+            background: #45b7d1;
+        }
+
+        @media (max-width: 768px) {
+            #all_devices_info_container {
+                width: 100%;
+                max-width: 300px;
+            }
+            #toggle_device_panel_button {
+                right: 10px;
+                top: 10px;
+                padding: 8px 12px;
+                font-size: 0.9em;
+            }
+            .device_info_block {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <script src="./libs/jquery/jquery-3.1.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.12/jstree.min.js"></script>
+    <script src="./libs/spectrum/spectrum.js"></script>
+    <script src="./libs/jquery-ui/jquery-ui.min.js"></script>
+    <script src="./libs/other/BinaryHeap.js"></script>
+    <script src="./libs/tween/tween.min.js"></script>
+    <script src="./libs/d3/d3.js"></script>
+    <script src="./libs/proj4/proj4.js"></script>
+    <script src="./libs/openlayers3/ol.js"></script>
+    <script src="./libs/i18next/i18next.js"></script>
+    <script src="./libs/potree/potree.js"></script>
+    <script src="./libs/plasio/js/laslaz.js"></script>
+
+    <div class="potree_container">
+        <div id="potree_render_area"></div>
+        <div id="potree_sidebar_container"></div>
+    </div>
+
+    <button id="toggle_device_panel_button" aria-label="Toggle Device Panel">
+        <i class="fas fa-tachometer-alt"></i> Panel
+    </button>
+
+    <div id="all_devices_info_container" role="region" aria-label="Device Information Panel">
+        <div id="devices_panel_header">
+            <span id="devices_panel_title">Dispositivos</span>
+            <button id="close_panel_button" aria-label="Close Panel">✕</button>
+        </div>
+    </div>
+
+    <script>
+        // Configuración centralizada
+        const config = {
+            api: {
+                position: "https://gdrw3khhwa.execute-api.us-east-1.amazonaws.com/default/GRANMUGNOLOCATION",
+                deviceIds: "https://er62e71gv3.execute-api.us-east-1.amazonaws.com/default/DEVICEMUGNO",
+               
+            },
+            maxDevices: 8,
+            updateInterval: 10000, // 10 segundos
+            altitudeOffset: 34.4,
+            maxTrajectoryPoints: 100 // Limit trajectory points to avoid performance issues
+        };
+
+        // Definir proyecciones
+        proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
+        proj4.defs("EPSG:32618", "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs");
+
+        // Inicializar visor Potree
+        window.viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
+        viewer.setEDLEnabled(true);
+        viewer.setFOV(60);
+        viewer.setPointBudget(1_000_000);
+        viewer.loadSettingsFromURL();
+        viewer.setDescription("");
+        viewer.setControls(viewer.earthControls);
+
+        const devicesData = {};
+        const deviceColors = [
+            0x0000ff, 0x00ff00, 0xffa500, 0x800080,
+            0xffc0cb, 0x00ffff, 0xff00ff, 0xffff00
+        ];
+        let sphereGeometry;
+
+        // Funciones de inicialización
+        function initializeScene(pointcloud) {
+            const scene = viewer.scene;
+            let material = pointcloud.material;
+            material.activeAttributeName = "gps-time";
+            material.size = 1;
+            material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
+            material.shape = Potree.PointShape.SQUARE;
+
+            if (pointcloud.projection == "") {
+                pointcloud.projection = "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs";
+            }
+            scene.addPointCloud(pointcloud);
+
+            sphereGeometry = new THREE.SphereGeometry(1.5, 16, 16);
+
+        }
+
+        // Funciones de gestión de dispositivos
+        async function setupDeviceMonitoring() {
+            try {
+                const response = await fetch(config.api.deviceIds);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Error al obtener lista de Device IDs: ${response.status} - ${errorText}`);
+                }
+                const deviceIdsToMonitor = await response.json();
+                console.log("Device IDs descubiertos:", deviceIdsToMonitor);
+
+                const finalDeviceIds = deviceIdsToMonitor.slice(0, config.maxDevices);
+
+                finalDeviceIds.forEach((deviceId, index) => {
+                    const color = deviceColors[index % deviceColors.length];
+                    const deviceSphereMaterial = new THREE.MeshBasicMaterial({ color: color });
+                    const deviceSphere = new THREE.Mesh(sphereGeometry, deviceSphereMaterial);
+                    viewer.scene.scene.add(deviceSphere);
+
+                    // CHANGED: Use indexed LineSegments for thicker lines
+                    const trajectoryGeometry = new THREE.BufferGeometry();
+                    const maxSegments = config.maxTrajectoryPoints - 1;
+                    const positionsArray = new Float32Array(maxSegments * 6 * 3); // 6 vertices per segment
+                    const indicesArray = new Uint32Array(maxSegments * 6); // Indices for two triangles
+                    trajectoryGeometry.setAttribute('position', new THREE.BufferAttribute(positionsArray, 3));
+                    trajectoryGeometry.setIndex(new THREE.BufferAttribute(indicesArray, 1));
+                    const trajectoryMaterial = new THREE.LineBasicMaterial({ color: color });
+                    const trajectoryLine = new THREE.LineSegments(trajectoryGeometry, trajectoryMaterial);
+                    trajectoryLine.visible = false;
+                    viewer.scene.scene.add(trajectoryLine);
+
+                    // CHANGED: Add debug spheres group
+                    const debugSpheresGroup = new THREE.Group();
+                    viewer.scene.scene.add(debugSpheresGroup);
+
+                    const deviceInfoBlock = document.createElement('div');
+                    deviceInfoBlock.className = 'device_info_block';
+                    deviceInfoBlock.setAttribute('aria-label', `Información del dispositivo ${deviceId}`);
+                    deviceInfoBlock.style.setProperty('--index', index);
+
+                    const deviceIdDisplay = document.createElement('div');
+                    deviceIdDisplay.className = 'device_id_display';
+                    const colorIndicator = document.createElement('span');
+                    colorIndicator.className = 'device_color_indicator';
+                    colorIndicator.style.backgroundColor = `#${color.toString(16).padStart(6, '0')}`;
+                    deviceIdDisplay.appendChild(colorIndicator);
+                    deviceIdDisplay.append(`ID: ${deviceId}`);
+
+                    const toggleCollapse = document.createElement('span');
+                    toggleCollapse.className = 'toggle_collapse';
+                    toggleCollapse.setAttribute('aria-label', 'Alternar visibilidad de detalles');
+                    deviceIdDisplay.appendChild(toggleCollapse);
+
+                    const deviceContent = document.createElement('div');
+                    deviceContent.className = 'device_content';
+                    const speedDisplay = document.createElement('div');
+                    speedDisplay.className = 'speed_display';
+                    speedDisplay.innerHTML = `<i class="fas fa-tachometer-alt"></i> Velocidad: N/A`;
+                    const heartRateDisplay = document.createElement('div');
+                    heartRateDisplay.className = 'heart_rate_display';
+                    heartRateDisplay.innerHTML = `<i class="fas fa-heartbeat"></i> Ritmo Cardíaco: N/A`;
+
+                    const buttonGroup = document.createElement('div');
+                    buttonGroup.className = 'button_group';
+                    const trajectoryButton = document.createElement('button');
+                    trajectoryButton.className = 'action_button';
+                    trajectoryButton.innerHTML = `<i class="fas fa-route"></i> Trayectoria`;
+                    trajectoryButton.setAttribute('aria-label', 'Alternar trayectoria');
+                    trajectoryButton.title = 'Mostrar/Ocultar trayectoria';
+                    trajectoryButton.onclick = () => toggleDeviceTrajectory(deviceId);
+
+                    const locateButton = document.createElement('button');
+                    locateButton.className = 'action_button';
+                    locateButton.innerHTML = `<i class="fas fa-map-pin"></i> Ubicar`;
+                    locateButton.disabled = true;
+                    locateButton.setAttribute('aria-label', 'Ubicar dispositivo');
+                    locateButton.title = 'Centrar cámara en el dispositivo';
+                    locateButton.onclick = () => locateDevice(deviceId);
+
+                    buttonGroup.appendChild(trajectoryButton);
+                    buttonGroup.appendChild(locateButton);
+
+                    deviceContent.appendChild(speedDisplay);
+                    deviceContent.appendChild(heartRateDisplay);
+                    deviceContent.appendChild(buttonGroup);
+
+                    deviceInfoBlock.appendChild(deviceIdDisplay);
+                    deviceInfoBlock.appendChild(deviceContent);
+                    document.getElementById('all_devices_info_container').appendChild(deviceInfoBlock);
+
+                    toggleCollapse.addEventListener('click', () => {
+                        deviceInfoBlock.classList.toggle('collapsed');
+                    });
+
+                    devicesData[deviceId] = {
+                        sphere: deviceSphere,
+                        speedDisplay: speedDisplay,
+                        heartRateDisplay: heartRateDisplay,
+                        trajectory: {
+                            line: trajectoryLine,
+                            isVisible: false,
+                            button: trajectoryButton,
+                            points: [],
+                            pointCount: 0,
+                            debugSpheresGroup: debugSpheresGroup
+                        },
+                        lastPosition: null,
+                        locateButton: locateButton
+                    };
+                });
+                fetchAllDevicePositions();
+                setInterval(fetchAllDevicePositions, config.updateInterval);
+            } catch (error) {
+                console.error('Error al configurar el monitoreo de dispositivos:', error);
+                const errorDiv = document.createElement('div');
+                errorDiv.style.color = 'var(--error)';
+                errorDiv.style.padding = '15px';
+                errorDiv.innerHTML = ` Error al cargar dispositivos: ${error.message} <button class="action_button retry_button">Reintentar</button> `;
+                document.getElementById('all_devices_info_container').appendChild(errorDiv);
+                errorDiv.querySelector('.retry_button').onclick = setupDeviceMonitoring;
+            }
+        }
+
+        /** @param {string} deviceId */
+        async function fetchAndUpdateDevicePosition(deviceId) {
+            const device = devicesData[deviceId];
+            if (!device) return;
+
+            device.speedDisplay.classList.add('loading');
+            device.heartRateDisplay.classList.add('loading');
+
+            try {
+                const response = await fetch(`${config.api.position}?deviceId=${deviceId}`);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Error al obtener datos de Lambda para ${deviceId}: ${response.status} - ${errorText}`);
+                }
+                const data = await response.json();
+
+                if (data && data.LON != null && data.LAT != null) {
+                    const lon = parseFloat(data.LON);
+                    const lat = parseFloat(data.LAT);
+                    const alt = (data.Z != null ? parseFloat(data.Z) : 0) + config.altitudeOffset;
+                    const [x, y] = proj4("EPSG:4326", "EPSG:32618", [lon, lat]);
+
+                    const newPosition = new THREE.Vector3(x, y, alt);
+                    device.sphere.position.copy(newPosition);
+                    device.lastPosition = newPosition;
+                    device.locateButton.disabled = false;
+
+                    // Update trajectory
+                    const trajectory = device.trajectory;
+                    trajectory.points.push(newPosition);
+                    trajectory.pointCount++;
+
+                    if (trajectory.points.length > config.maxTrajectoryPoints) {
+                        trajectory.points.shift(); // Remove the oldest point
+                        if (trajectory.debugSpheresGroup.children.length > 0) {
+                            trajectory.debugSpheresGroup.remove(trajectory.debugSpheresGroup.children[0]);
+                        }
+                    }
+
+                    // Update debug spheres for trajectory
+                    const debugSphereMaterial = new THREE.MeshBasicMaterial({ color: device.sphere.material.color, transparent: true, opacity: 0.5 });
+                    const debugSphere = new THREE.Mesh(sphereGeometry, debugSphereMaterial);
+                    debugSphere.position.copy(newPosition);
+                    trajectory.debugSpheresGroup.add(debugSphere);
+                    debugSphere.scale.set(0.5, 0.5, 0.5); // Make debug spheres smaller
+
+                    // Update line segments (thicker lines)
+                    updateLineSegments(trajectory.line, trajectory.points);
+                    trajectory.line.visible = trajectory.isVisible && trajectory.points.length >= 2;
+                    trajectory.debugSpheresGroup.visible = trajectory.isVisible;
+
+                    // Update UI
+                    const speed = data.SPEED_MS != null ? parseFloat(data.SPEED_MS).toFixed(2) : 'N/A';
+                    const heartRate = data.HEART_RATE != null ? parseInt(data.HEART_RATE) : 'N/A';
+
+                    device.speedDisplay.innerHTML = `<i class="fas fa-tachometer-alt"></i> Velocidad: ${speed} m/s`;
+                    device.heartRateDisplay.innerHTML = `<i class="fas fa-heartbeat"></i> Ritmo Cardíaco: ${heartRate}`;
+
+                    device.speedDisplay.classList.remove('loading');
+                    device.heartRateDisplay.classList.remove('loading');
+                    device.speedDisplay.classList.add('data-updated');
+                    device.heartRateDisplay.classList.add('data-updated');
+                    setTimeout(() => {
+                        device.speedDisplay.classList.remove('data-updated');
+                        device.heartRateDisplay.classList.remove('data-updated');
+                    }, 500);
+                } else {
+                    console.warn(`Datos de posición incompletos para el dispositivo ${deviceId}:`, data);
+                    device.speedDisplay.innerHTML = `<i class="fas fa-tachometer-alt"></i> Velocidad: N/A`;
+                    device.heartRateDisplay.innerHTML = `<i class="fas fa-heartbeat"></i> Ritmo Cardíaco: N/A`;
+                }
+            } catch (error) {
+                console.error(`Error al obtener/actualizar posición para ${deviceId}:`, error);
+                device.speedDisplay.innerHTML = `<i class="fas fa-tachometer-alt"></i> Velocidad: Error`;
+                device.heartRateDisplay.innerHTML = `<i class="fas fa-heartbeat"></i> Ritmo Cardíaco: Error`;
+            } finally {
+                device.speedDisplay.classList.remove('loading');
+                device.heartRateDisplay.classList.remove('loading');
+            }
+        }
+
+        async function fetchAllDevicePositions() {
+            for (const deviceId in devicesData) {
+                await fetchAndUpdateDevicePosition(deviceId);
+            }
+        }
+
+        /**
+         * @param {THREE.LineSegments} lineObject
+         * @param {THREE.Vector3[]} points
+         */
+        function updateLineSegments(lineObject, points) {
+            const geometry = lineObject.geometry;
+            const positions = geometry.attributes.position.array;
+            const indices = geometry.index.array;
+            const thickness = 0.5; // Ajusta este valor para controlar el grosor de la línea
+
+            let posIndex = 0;
+            let idxIndex = 0;
+
+            for (let i = 0; i < points.length - 1; i++) {
+                const start = points[i];
+                const end = points[i + 1];
+
+                // Calculate perpendicular vector for thickness
+                const direction = new THREE.Vector3().subVectors(end, start).normalize();
+                let perpendicular = new THREE.Vector3(-direction.y, direction.x, 0).normalize();
+                if (perpendicular.lengthSq() === 0) { // Handle vertical lines
+                    perpendicular.set(1, 0, 0);
+                }
+
+                // Four vertices for the segment (forming a quad)
+                const v1 = new THREE.Vector3().addVectors(start, perpendicular.clone().multiplyScalar(thickness / 2));
+                const v2 = new THREE.Vector3().subVectors(start, perpendicular.clone().multiplyScalar(thickness / 2));
+                const v3 = new THREE.Vector3().addVectors(end, perpendicular.clone().multiplyScalar(thickness / 2));
+                const v4 = new THREE.Vector3().subVectors(end, perpendicular.clone().multiplyScalar(thickness / 2));
+
+                // Store positions
+                positions[posIndex++] = v1.x; positions[posIndex++] = v1.y; positions[posIndex++] = v1.z;
+                positions[posIndex++] = v2.x; positions[posIndex++] = v2.y; positions[posIndex++] = v2.z;
+                positions[posIndex++] = v3.x; positions[posIndex++] = v3.y; positions[posIndex++] = v3.z;
+                positions[posIndex++] = v4.x; positions[posIndex++] = v4.y; positions[posIndex++] = v4.z;
+
+                // Store indices for two triangles (forming the quad)
+                const baseIndex = i * 4;
+                indices[idxIndex++] = baseIndex;
+                indices[idxIndex++] = baseIndex + 1;
+                indices[idxIndex++] = baseIndex + 2;
+
+                indices[idxIndex++] = baseIndex + 1;
+                indices[idxIndex++] = baseIndex + 3;
+                indices[idxIndex++] = baseIndex + 2;
+            }
+
+            // Set the draw range to only render the used part of the buffer
+            geometry.setDrawRange(0, idxIndex);
+            geometry.attributes.position.needsUpdate = true;
+            geometry.index.needsUpdate = true;
+        }
+
+
+        function locateDevice(deviceId) {
+            const device = devicesData[deviceId];
+            if (device && device.lastPosition) {
+                viewer.scene.view.position.copy(device.lastPosition);
+                viewer.scene.view.position.z += 50; // Ajusta la altitud para una mejor vista
+                viewer.scene.view.lookAt(device.lastPosition);
+                viewer.set  ;
+            }
+        }
+
+        function toggleDeviceTrajectory(deviceId) {
+            const device = devicesData[deviceId];
+            if (!device) return;
+
+            const trajectory = device.trajectory;
+            const line = trajectory.line;
+            const debugSpheresGroup = trajectory.debugSpheresGroup;
+            const button = trajectory.button;
+
+            trajectory.isVisible = !trajectory.isVisible;
+            if (!trajectory.isVisible) {
+                line.visible = false;
+                debugSpheresGroup.visible = false;
+                button.innerHTML = `<i class=\"fas fa-route\"></i> Trayectoria`;
+                button.classList.remove('active');
+            } else {
+                trajectory.isVisible = true;
+                line.visible = trajectory.points.length >= 2;
+                debugSpheresGroup.visible = true;
+                button.innerHTML = `<i class=\"fas fa-route\"></i> Ocultar`;
+                button.classList.add('active');
+            }
+            console.log(`Toggled trajectory for ${deviceId}, visible: ${line.visible}`);
+            viewer.scene.scene.needsUpdate = true;
+        }
+
+        // Lógica para alternar el panel
+        const togglePanelButton = document.getElementById('toggle_device_panel_button');
+        const closePanelButton = document.getElementById('close_panel_button');
+        const devicesPanel = document.getElementById('all_devices_info_container');
+
+        function togglePanel() {
+            const isVisible = devicesPanel.classList.toggle('visible');
+            togglePanelButton.innerHTML = isVisible
+                ? `<i class=\"fas fa-times\"></i> Cerrar`
+                : `<i class=\"fas fa-tachometer-alt\"></i> Panel`;
+        }
+
+        togglePanelButton.addEventListener('click', togglePanel);
+        closePanelButton.addEventListener('click', togglePanel);
+
+        // Cargar la nube de puntos
+        Potree.loadPointCloud("./pointclouds/MALECONTRUE/cloud.js", "MALECON", async e => {
+            initializeScene(e.pointcloud);
+            setupDeviceMonitoring();
+            viewer.fitToScreen();
+        });
+    </script>
+</body>
+</html>
